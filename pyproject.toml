@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "engocr"
+version = "0.1.0"
+description = "EngOCR — local-first OCR for technical handwritten notes: images and PDFs → structured text, LaTeX, code, and markdown"
+requires-python = ">=3.12"
+readme = "README.md"
+license = "MIT"
+authors = [
+    {name = "Hristo Georgiev", email = "contact@hristo-georgiev.com"},
+]
+keywords = ["ocr", "handwriting", "latex", "vision", "llm"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "Pillow>=10.0.0",
+    "PyMuPDF>=1.24.0",
+    # Vision providers (openai SDK covers openai/qwen/mistral/
+    # openrouter/ollama/xai/azure)
+    "google-genai>=1.0",
+    "openai>=1.0.0",
+    "anthropic>=0.40",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5.0",
+]
+
+[project.urls]
+Repository = "https://github.com/hggeorgiev/engocr"
+Issues = "https://github.com/hggeorgiev/engocr/issues"
+
+[project.scripts]
+engocr = "engocr.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["engocr*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["engocr"]
