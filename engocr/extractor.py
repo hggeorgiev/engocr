@@ -91,11 +91,15 @@ Return ONLY a JSON object with this exact structure:
     {{"type": "graph|flowchart|tree|table|venn|other",
      "description": "Detailed description including labels, node names, relationships",
      "structured_data": {{}},
+     "source": "flowchart TD\\n    A[Start] --> B[End]",
+     "source_lang": "mermaid",
      "bbox_approx": [x0,y0,x1,y1]}}
   ],
   "sketch_elements": [
     {{"type": "freehand|coordinate_system|geometry|other",
      "description": "What the sketch depicts",
+     "source": "\\\\begin{{tikzpicture}}...\\\\end{{tikzpicture}}",
+     "source_lang": "tikz",
      "bbox_approx": [x0,y0,x1,y1]}}
   ],
   "equations": [
@@ -124,6 +128,22 @@ Rules:
 - tags_suggestion: 1-5 taxonomy tags the page seems about. Use ONLY exact tag names.
 - half_life_suggestion: one of the four layers.
 - Be precise and do not hallucinate content not visible.
+
+Rules for source reconstruction (diagram_elements and sketch_elements):
+- Reconstruct each diagram/sketch as editable diagram source code when the
+  structure is clearly visible. Language by element type:
+  * graph | flowchart | tree | mindmap → Mermaid (source_lang "mermaid").
+    Use a conservative subset: "flowchart TD", simple A --> B edges,
+    quoted node labels. No subgraphs, no styling, no exotic syntax.
+  * table → a markdown table (source_lang "markdown").
+  * coordinate_system | geometry sketches → TikZ/pgfplots
+    (source_lang "tikz"): a complete tikzpicture; use an axis environment
+    for plots.
+  * venn | other | freehand → source "" (description only).
+- Only emit source you can ground in the image: real node labels, real
+  edge directions, real curve shapes. If any part is unclear, omit that
+  part; if the whole structure is unclear, use source "".
+- The description stays mandatory even when source is present.
 
 Rules for equations:
 - Transcribe ALL visible mathematical expressions into proper LaTeX format.
@@ -188,6 +208,8 @@ Rules for code_elements:
                 type=d.get("type", ""),
                 description=d.get("description", ""),
                 structured_data=d.get("structured_data", {}),
+                source=d.get("source", ""),
+                source_lang=_route_lang(d.get("type", ""), d.get("source_lang", "")),
                 bbox_approx=d.get("bbox_approx", [0.0, 0.0, 1.0, 1.0]),
             ))
 
@@ -195,6 +217,8 @@ Rules for code_elements:
             result.sketch_elements.append(SketchElement(
                 type=s.get("type", "freehand"),
                 description=s.get("description", ""),
+                source=s.get("source", ""),
+                source_lang=_route_lang(s.get("type", ""), s.get("source_lang", "")),
                 bbox_approx=s.get("bbox_approx", [0.0, 0.0, 1.0, 1.0]),
             ))
 
@@ -225,3 +249,24 @@ Rules for code_elements:
         )
 
         return self._parse_response(generated)
+
+
+# ── Diagram-source language routing ──────────────────
+
+_MERMAID_TYPES = {"graph", "flowchart", "tree", "mindmap"}
+_TIKZ_TYPES = {"coordinate_system", "geometry"}
+
+
+def _route_lang(element_type: str, declared: str) -> str:
+    """Normalize source_lang: trust a declared value, else route by type."""
+    declared = (declared or "").strip().lower()
+    if declared:
+        return declared
+    t = (element_type or "").strip().lower()
+    if t in _MERMAID_TYPES:
+        return "mermaid"
+    if t == "table":
+        return "markdown"
+    if t in _TIKZ_TYPES:
+        return "tikz"
+    return ""

@@ -9,6 +9,14 @@ EngOCR drives a configurable vision model (no local model weights — API or
 Ollama) and produces clean markdown: transcribed handwriting, `$$…$$` display
 math, fenced code blocks, and descriptions of diagrams and sketches.
 
+**Sketch → diagram source.** Beyond describing diagrams, engocr reconstructs
+them as *editable diagram code* — graphs/flowcharts/trees become
+[Mermaid](https://mermaid.js.org), coordinate-system/geometry sketches become
+TikZ/pgfplots, tables become markdown tables. The result is versionable,
+diffable text that renders natively in GitHub/Obsidian/VS Code (Mermaid) or
+compiles with LaTeX (TikZ). Only structure the model can ground in the image
+is emitted; anything unclear stays a plain description.
+
 > **Status: 0.1.0 (pre-release)** — expect breaking changes until 1.0.
 
 ## Install
@@ -70,7 +78,8 @@ caption = caption_image(pil_image)            # one-line description, any provid
 
 `PageVisionResult` is the stable public schema: `page_summary`,
 `text_elements`, `equations` (LaTeX + label + natural-language gloss),
-`code_elements`, `diagram_elements`, `sketch_elements`,
+`code_elements`, `diagram_elements` / `sketch_elements` (description +
+reconstructed `source` / `source_lang`: mermaid, tikz, or markdown),
 `captions_and_annotations`. (`tags_suggestion` / `half_life_suggestion` are
 optional consumer extensions used by EngMem; ignore them standalone.)
 

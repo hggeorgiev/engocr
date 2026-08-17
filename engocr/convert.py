@@ -157,13 +157,18 @@ def to_markdown(result: PageVisionResult) -> str:
         if ce.code.strip():
             sections.append(f"```{ce.language}\n{ce.code.rstrip()}\n```")
 
-    visuals = [(d.type, d.description) for d in result.diagram_elements] + [
-        (f"sketch ({s.type})", s.description) for s in result.sketch_elements
-    ]
-    visuals = [(t, d) for t, d in visuals if d.strip()]
-    if visuals:
-        lines = [f"- **{t}**: {d}" for t, d in visuals]
-        sections.append("## Diagrams & sketches\n\n" + "\n".join(lines))
+    visual_blocks = []
+    for d in result.diagram_elements:
+        block = _visual_block(d.type, d.description, d.source, d.source_lang)
+        if block:
+            visual_blocks.append(block)
+    for s in result.sketch_elements:
+        block = _visual_block(f"sketch ({s.type})", s.description,
+                              s.source, s.source_lang)
+        if block:
+            visual_blocks.append(block)
+    if visual_blocks:
+        sections.append("## Diagrams & sketches\n\n" + "\n\n".join(visual_blocks))
 
     notes = [n.strip() for n in result.captions_and_annotations if n.strip()]
     if notes:
@@ -185,3 +190,21 @@ def _math_block(latex: str, eq_type: str) -> str:
     if eq_type == "inline":
         return f"${body}$"
     return f"$$\n{body}\n$$"
+
+
+def _visual_block(kind: str, description: str, source: str,
+                  source_lang: str) -> str:
+    """One diagram/sketch entry: description bullet + optional source code.
+
+    markdown-table sources render inline (no fence); everything else gets
+    a language-tagged fence (mermaid, tikz).
+    """
+    parts: list[str] = []
+    if description.strip():
+        parts.append(f"- **{kind}**: {description}")
+    if source.strip():
+        if source_lang == "markdown":
+            parts.append(source.strip())
+        else:
+            parts.append(f"```{source_lang}\n{source.strip()}\n```")
+    return "\n\n".join(parts)

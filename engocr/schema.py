@@ -26,6 +26,8 @@ class DiagramElement:
     type: str = ""                            # "graph" | "flowchart" | "tree" | "venn" | ...
     description: str = ""
     structured_data: dict = field(default_factory=dict)
+    source: str = ""                          # reconstructed diagram code ("" = not grounded)
+    source_lang: str = ""                     # "mermaid" | "markdown" | "tikz"
     bbox_approx: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])
 
 
@@ -33,6 +35,8 @@ class DiagramElement:
 class SketchElement:
     type: str = "freehand"
     description: str = ""
+    source: str = ""                          # reconstructed diagram code ("" = not grounded)
+    source_lang: str = ""                     # "tikz" for coordinate/geometry sketches
     bbox_approx: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])
 
 

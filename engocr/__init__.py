@@ -22,7 +22,6 @@ from engocr.convert import (
     to_markdown,
 )
 from engocr.extractor import VisionExtractor
-from engocr.gate import math_density, page_needs_vision
 from engocr.providers.base import VisionProvider, make_provider
 from engocr.schema import (
     CodeElement,
@@ -49,8 +48,6 @@ __all__ = [
     "convert_file",
     "load_image",
     "make_provider",
-    "math_density",
-    "page_needs_vision",
     "pages_to_markdown",
     "render_pdf_pages",
     "to_markdown",
