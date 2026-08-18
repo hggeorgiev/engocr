@@ -93,7 +93,10 @@ def test_tikz_source_rendered_as_fence():
         source="\\begin{tikzpicture}\n\\draw ...\n\\end{tikzpicture}",
         source_lang="tikz",
     )]))
-    assert "```tikz\n\\begin{tikzpicture}" in md
+    # tikz sources are wrapped in the document preamble (no documentclass)
+    assert "```tikz\n\\usepackage{tikz}" in md
+    assert "\\begin{tikzpicture}" in md
+    assert "\\end{document}" in md
 
 
 def test_markdown_table_source_rendered_inline():

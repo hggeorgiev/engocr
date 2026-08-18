@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import time
 
 from PIL import Image
@@ -137,17 +138,27 @@ Rules for source reconstruction (diagram_elements and sketch_elements):
     quoted node labels. No subgraphs, no styling, no exotic syntax.
   * table → a markdown table (source_lang "markdown").
   * coordinate_system | geometry sketches → TikZ/pgfplots
-    (source_lang "tikz"): a complete tikzpicture; use an axis environment
-    for plots.
+    (source_lang "tikz"): emit ONLY the tikzpicture (use an axis
+    environment for plots) — NO \\documentclass, \\usepackage, or
+    document environment; a compilable document wrapper is added
+    automatically.
+- Add a line for including the amsmath in every TikZ/pgfplots drawing
   * venn | other | freehand → source "" (description only).
 - Only emit source you can ground in the image: real node labels, real
   edge directions, real curve shapes. If any part is unclear, omit that
   part; if the whole structure is unclear, use source "".
 - The description stays mandatory even when source is present.
+- Inside JSON string values, escape newlines as \\n — never put a literal
+  line break inside a string (breaks JSON parsing).
+- In JSON strings, escape every backslash as \\\\ — write LaTeX commands as
+  \\\\int, \\\\frac, \\\\mathbb (a single backslash breaks JSON parsing).
 
 Rules for equations:
 - Transcribe ALL visible mathematical expressions into proper LaTeX format.
 - Use \\(...\\) for inline math and \\[...\\] for display/block math (do NOT use $$).
+- Inside text_elements and descriptions, wrap EVERY mathematical expression,
+  symbol, or variable in \\(...\\) — never leave bare LaTeX commands
+  (\\int, \\frac, \\sum, ^, _, \\alpha, ...) unwrapped in prose.
 - For matrices, use \\begin{{pmatrix}} or \\begin{{bmatrix}} environments.
 - For aligned equations, use \\begin{{aligned}} within \\[...\\].
 - For chemical formulas, use \\ce{{...}} notation where applicable.
@@ -173,7 +184,16 @@ Rules for code_elements:
 - Pseudocode and algorithm blocks count as code."""
 
     def _parse_response(self, raw_text: str) -> PageVisionResult:
-        """Parse the provider's JSON response into a PageVisionResult."""
+        """Parse the provider's JSON response into a PageVisionResult.
+
+        Tolerant cascade (each layer salvages a common LLM failure):
+        strict=False loads (literal newlines/tabs inside strings — the
+        multi-line mermaid/tikz sources invite these) → raw_decode (valid
+        JSON followed by trailing commentary) → truncation repair (output
+        cap hit on dense pages). Unrecoverable JSON-looking output becomes
+        a clean marker; prose-looking output (no-JSON-mode providers) is
+        kept as the page summary.
+        """
         text = raw_text.strip()
         if text.startswith("```"):
             lines = text.split("\n")
@@ -182,10 +202,39 @@ Rules for code_elements:
             if lines and lines[-1].strip() == "```":
                 lines = lines[:-1]
             text = "\n".join(lines)
+        # LaTeX-heavy content invites single-backslash sequences ("\int",
+        # "\frac") that are invalid JSON escapes; idempotent for valid JSON.
+        text = _escape_lone_backslashes(text)
 
+        data = None
+        error: Exception | None = None
         try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
+            data = json.loads(text, strict=False)
+        except json.JSONDecodeError as e:
+            error = e
+        if data is None and text.startswith("{"):
+            try:
+                data, _ = json.JSONDecoder(strict=False).raw_decode(text)
+                _logger.info("json_salvaged trailing_commentary")
+            except json.JSONDecodeError as e:
+                error = e
+                data = None
+        if data is None:
+            repaired = _repair_truncated_json(text)
+            if repaired is not None:
+                try:
+                    data = json.loads(repaired, strict=False)
+                    _logger.info("json_salvaged dropped_tail_chars=%d",
+                                 len(text) - len(repaired))
+                except json.JSONDecodeError as e:
+                    error = e
+                    data = None
+        if data is None:
+            if text.startswith("{"):
+                _logger.warning("json_unrecoverable error=%s head=%.80s",
+                                error, text)
+                _logger.debug("json_unrecoverable_raw\n%s", raw_text)
+                return PageVisionResult(page_summary=_MALFORMED_MARKER)
             return PageVisionResult(page_summary=raw_text[:500])
 
         result = PageVisionResult(
@@ -200,7 +249,7 @@ Rules for code_elements:
             result.text_elements.append(TextElement(
                 text=t.get("text", ""),
                 type=t.get("type", "handwriting"),
-                bbox_approx=t.get("bbox_approx", [0.0, 0.0, 1.0, 1.0]),
+                bbox_approx=_clean_bbox(t.get("bbox_approx")),
             ))
 
         for d in data.get("diagram_elements", []):
@@ -210,7 +259,7 @@ Rules for code_elements:
                 structured_data=d.get("structured_data", {}),
                 source=d.get("source", ""),
                 source_lang=_route_lang(d.get("type", ""), d.get("source_lang", "")),
-                bbox_approx=d.get("bbox_approx", [0.0, 0.0, 1.0, 1.0]),
+                bbox_approx=_clean_bbox(d.get("bbox_approx")),
             ))
 
         for s in data.get("sketch_elements", []):
@@ -219,7 +268,7 @@ Rules for code_elements:
                 description=s.get("description", ""),
                 source=s.get("source", ""),
                 source_lang=_route_lang(s.get("type", ""), s.get("source_lang", "")),
-                bbox_approx=s.get("bbox_approx", [0.0, 0.0, 1.0, 1.0]),
+                bbox_approx=_clean_bbox(s.get("bbox_approx")),
             ))
 
         for e in data.get("equations", []):
@@ -228,14 +277,14 @@ Rules for code_elements:
                 eq_type=e.get("eq_type", "display"),
                 label=e.get("label", ""),
                 description=e.get("description", ""),
-                bbox_approx=e.get("bbox_approx", [0.0, 0.0, 1.0, 1.0]),
+                bbox_approx=_clean_bbox(e.get("bbox_approx")),
             ))
 
         for c in data.get("code_elements", []):
             result.code_elements.append(CodeElement(
                 code=c.get("code", ""),
                 language=c.get("language", ""),
-                bbox_approx=c.get("bbox_approx", [0.0, 0.0, 1.0, 1.0]),
+                bbox_approx=_clean_bbox(c.get("bbox_approx")),
             ))
 
         return result
@@ -270,3 +319,84 @@ def _route_lang(element_type: str, declared: str) -> str:
     if t in _TIKZ_TYPES:
         return "tikz"
     return ""
+
+
+# ── Truncated-JSON salvage ───────────────────────────
+
+_MALFORMED_MARKER = ("[malformed model output — re-run `engocr convert` "
+                     "to retry this page]")
+
+_DEFAULT_BBOX = [0.0, 0.0, 1.0, 1.0]
+
+# Valid JSON escapes are consumed whole (first alternative); a lone
+# backslash (second alternative, captured) is doubled. LaTeX content like
+# "\int" or "\frac" is an invalid JSON escape unless the model doubles
+# the backslash — this makes those responses parseable. Idempotent for
+# valid JSON.
+_LONE_BACKSLASH_RE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|[\\"/bfnrt])|(\\)')
+
+
+def _escape_lone_backslashes(text: str) -> str:
+    """Double backslashes that are not part of a valid JSON escape."""
+    return _LONE_BACKSLASH_RE.sub(
+        lambda m: "\\\\" if m.group(1) else m.group(0), text)
+
+
+def _clean_bbox(value) -> list[float]:
+    """bbox_approx must be 4 normalized numbers; anything else → full page.
+
+    Models sometimes emit 2-point boxes, and the truncation salvage can
+    leave a partial array — a malformed bbox would crash cropping later.
+    """
+    if (isinstance(value, list) and len(value) == 4
+            and all(isinstance(v, (int, float)) for v in value)):
+        return value
+    return list(_DEFAULT_BBOX)
+
+
+def _repair_truncated_json(raw: str) -> str | None:
+    """Salvage a truncated JSON object from a model response.
+
+    Walks the text tracking string state and the open-bracket stack,
+    cuts back to the last clean element boundary (dropping the
+    incomplete tail), and closes every open bracket. Returns the
+    repaired string, or None when nothing salvageable remains (or the
+    text isn't JSON-shaped at all).
+    """
+    text = raw.strip()
+    if not text.startswith("{"):
+        return None
+
+    stack: list[str] = []      # expected closers, innermost last
+    in_string = False
+    escaped = False
+    cut = 0                    # clean cut candidate (element boundary)
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+            cut = i + 1
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+                cut = i + 1
+        elif ch == ",":
+            cut = i            # cut BEFORE the comma: no dangling comma
+
+    if not stack or cut == 0:
+        return None
+
+    prefix = text[:cut].rstrip()
+    if not prefix or prefix[-1] in ":,":
+        return None
+    return prefix + "".join(reversed(stack))

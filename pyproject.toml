@@ -23,12 +23,14 @@ classifiers = [
 
 dependencies = [
     "Pillow>=10.0.0",
-    "PyMuPDF>=1.24.0",
+    "PyMuPDF>=1.26.0",   # 1.26+ guarantees the `pymupdf` import name
     # Vision providers (openai SDK covers openai/qwen/mistral/
     # openrouter/ollama/xai/azure)
     "google-genai>=1.0",
     "openai>=1.0.0",
     "anthropic>=0.40",
+    # CLI progress bars
+    "tqdm>=4.64",
 ]
 
 [project.optional-dependencies]

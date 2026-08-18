@@ -28,6 +28,8 @@ _ENV_MAP = {
     "azure_endpoint": "AZURE_OPENAI_ENDPOINT",
     "azure_api_version": "AZURE_OPENAI_API_VERSION",
     "ollama_base_url": "OLLAMA_BASE_URL",
+    "image_gen_provider": "IMAGE_GEN_PROVIDER",
+    "image_gen_model": "IMAGE_GEN_MODEL",
 }
 _API_MAP = {
     "gemini_key": "GEMINI_API_KEY",
@@ -45,6 +47,8 @@ _TEMPLATE = {
     "vision_model": "",
     "azure_endpoint": "",
     "ollama_base_url": "",
+    "image_gen_provider": "gemini",
+    "image_gen_model": "",
     "api": {
         "gemini_key": "", "openai_key": "", "anthropic_key": "",
         "mistral_key": "", "openrouter_key": "", "qwen_key": "",
@@ -152,6 +156,13 @@ def main(argv: list[str] | None = None) -> None:
                          default=LLM_MAX_CONCURRENT,
                          help="Parallel page conversions for PDFs "
                               f"(default: {LLM_MAX_CONCURRENT})")
+    convert.add_argument("-q", "--quiet", action="store_true",
+                         help="Disable the progress bar")
+    convert.add_argument("--gen-diagrams", action="store_true",
+                         help="Redraw sketches that resist Mermaid/TikZ "
+                              "reconstruction with an image-generation model "
+                              "(one image call per such sketch; config: "
+                              "image_gen_provider / image_gen_model)")
 
     args = parser.parse_args(argv)
 
@@ -177,6 +188,15 @@ def main(argv: list[str] | None = None) -> None:
         print(str(e), file=sys.stderr)
         sys.exit(1)
 
+    image_gen = None
+    if args.gen_diagrams:
+        from engocr.imagegen import make_image_gen_provider
+        try:
+            image_gen = make_image_gen_provider()
+        except Exception as e:
+            print(f"--gen-diagrams: {e}", file=sys.stderr)
+            sys.exit(1)
+
     failures = 0
     for name in args.files:
         input_path = Path(name).expanduser()
@@ -185,7 +205,10 @@ def main(argv: list[str] | None = None) -> None:
             failures += 1
             continue
         result = convert_file(extractor, input_path,
-                              dpi=args.dpi, workers=args.workers)
+                              dpi=args.dpi, workers=args.workers,
+                              progress=not args.quiet,
+                              gen_diagrams=args.gen_diagrams,
+                              image_gen=image_gen)
         if result.error:
             print(f"Failed: {input_path}: {result.error}", file=sys.stderr)
             failures += 1

@@ -53,6 +53,10 @@ class GeminiVisionProvider:
                 temperature=self.temperature,
                 max_output_tokens=self.max_output_tokens,
                 response_mime_type="application/json",
+                # No tools are registered — disable AFC explicitly (the SDK
+                # warns on direct generate_content use with AFC enabled).
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True),
             ),
         )
         return generated.text or ""

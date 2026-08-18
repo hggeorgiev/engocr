@@ -10,7 +10,9 @@ from PIL import Image
 
 from engocr.config import LLM_MAX_CONCURRENT, PDF_RENDER_DPI
 from engocr.extractor import VisionExtractor
+from engocr.imagegen import build_gen_prompt, crop_from_bbox, make_image_gen_provider
 from engocr.logging import get_logger
+from engocr.progress import page_progress
 from engocr.schema import PageVisionResult
 
 _logger = get_logger(__name__)
@@ -41,9 +43,9 @@ def render_pdf_pages(
     dpi: int = PDF_RENDER_DPI,
 ) -> Iterator[tuple[int, Image.Image]]:
     """Render each PDF page to a PIL image at `dpi` (for vision)."""
-    import fitz  # PyMuPDF
+    import pymupdf
 
-    doc = fitz.open(str(path))
+    doc = pymupdf.open(str(path))
     try:
         for page_index in range(len(doc)):
             pix = doc[page_index].get_pixmap(dpi=dpi)
@@ -61,15 +63,36 @@ def convert_file(
     path: Path | str,
     dpi: int = PDF_RENDER_DPI,
     workers: int = LLM_MAX_CONCURRENT,
+    progress: bool = False,
+    gen_diagrams: bool = False,
+    image_gen=None,
+    out_dir: Path | str | None = None,
 ) -> ConversionResult:
-    """Convert one image or PDF file to markdown (per-page vision calls)."""
+    """Convert one image or PDF file to markdown (per-page vision calls).
+
+    progress: show a tqdm page bar on stderr (CLI default; off for
+    library use).
+    gen_diagrams: for diagrams/sketches without reconstructed source,
+    redraw them with an image-generation provider (cropped sketch +
+    instruction) and embed the PNG in the markdown. image_gen: provider
+    instance (default: IMAGE_GEN_PROVIDER). out_dir: where generated
+    PNGs go (default: next to the input).
+    """
     path = Path(path)
     result = ConversionResult(source=str(path))
     try:
         if path.suffix.lower() == ".pdf":
-            pages = _convert_pdf(extractor, path, dpi, workers)
+            pages, page_images = _convert_pdf(extractor, path, dpi, workers,
+                                              progress)
         else:
-            pages = [extractor.extract_page(load_image(path))]
+            img = load_image(path)
+            pages, page_images = [extractor.extract_page(img)], [img]
+            _logger.info("generated content for %s", path.name)
+        if gen_diagrams:
+            provider = image_gen or make_image_gen_provider()
+            enhance_with_generated_images(
+                pages, page_images, provider,
+                Path(out_dir) if out_dir else path.parent, path.stem)
         result.pages = pages
         result.markdown = pages_to_markdown(pages, title=path.stem)
     except Exception as e:
@@ -83,7 +106,8 @@ def _convert_pdf(
     path: Path,
     dpi: int,
     workers: int,
-) -> list[PageVisionResult]:
+    progress: bool = False,
+) -> tuple[list[PageVisionResult], list[Image.Image]]:
     from concurrent.futures import ThreadPoolExecutor
 
     rendered = list(render_pdf_pages(path, dpi))
@@ -96,24 +120,69 @@ def _convert_pdf(
         except Exception as e:
             return pn, None, str(e)
 
-    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(rendered)))) as ex:
+    with (ThreadPoolExecutor(max_workers=max(1, min(workers, len(rendered)))) as ex,
+          page_progress(total=len(rendered), desc=path.name,
+                        enabled=progress) as bar):
         for pn, vr, error in ex.map(lambda a: _call(*a), rendered):
+            bar.update(1)
             if vr is not None:
                 results[pn] = vr
+                _logger.info("generated content for %s (page %d/%d)",
+                             path.name, pn + 1, len(rendered))
             else:
                 errors[pn] = str(error)
                 _logger.warning("vision_failed file=%s page=%s error=%s",
                                 path, pn, error)
 
     pages: list[PageVisionResult] = []
-    for pn, _ in rendered:
+    page_images: list[Image.Image] = []
+    for pn, img in rendered:
+        page_images.append(img)
         if pn in results:
             pages.append(results[pn])
         else:
             pages.append(PageVisionResult(
                 page_summary=f"[page {pn + 1}: vision extraction failed — "
                              f"{errors.get(pn, 'unknown error')}]"))
-    return pages
+    return pages, page_images
+
+
+# ── Image generation for non-reconstructable sketches ──
+
+def enhance_with_generated_images(
+    pages: list[PageVisionResult],
+    page_images: list[Image.Image],
+    provider,
+    out_dir: Path,
+    stem: str,
+) -> int:
+    """Redraw source-less diagrams/sketches with an image-gen provider.
+
+    Only elements that resisted code reconstruction (empty source) and
+    have a description are eligible. Fail-soft per element: a failed
+    generation leaves the description as the only representation.
+    Returns the number of images written.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = 0
+    for page_idx, (page, img) in enumerate(zip(pages, page_images)):
+        n = 0
+        for elem in (*page.diagram_elements, *page.sketch_elements):
+            if elem.source.strip() or not elem.description.strip():
+                continue
+            n += 1
+            filename = f"{stem}_p{page_idx + 1}_diagram_{n}.png"
+            try:
+                crop = crop_from_bbox(img, elem.bbox_approx)
+                generated = provider.generate(
+                    build_gen_prompt(elem.description), crop)
+                generated.save(out_dir / filename, format="PNG")
+                elem.generated_image = filename
+                written += 1
+            except Exception as e:
+                _logger.warning("image_gen_failed file=%s error=%s",
+                                filename, e)
+    return written
 
 
 # ── Markdown rendering ───────────────────────────────
@@ -159,12 +228,13 @@ def to_markdown(result: PageVisionResult) -> str:
 
     visual_blocks = []
     for d in result.diagram_elements:
-        block = _visual_block(d.type, d.description, d.source, d.source_lang)
+        block = _visual_block(d.type, d.description, d.source, d.source_lang,
+                              d.generated_image)
         if block:
             visual_blocks.append(block)
     for s in result.sketch_elements:
         block = _visual_block(f"sketch ({s.type})", s.description,
-                              s.source, s.source_lang)
+                              s.source, s.source_lang, s.generated_image)
         if block:
             visual_blocks.append(block)
     if visual_blocks:
@@ -192,12 +262,38 @@ def _math_block(latex: str, eq_type: str) -> str:
     return f"$$\n{body}\n$$"
 
 
-def _visual_block(kind: str, description: str, source: str,
-                  source_lang: str) -> str:
-    """One diagram/sketch entry: description bullet + optional source code.
+_TIKZ_DOC_TEMPLATE = """\\usepackage{tikz}
+\\usepackage{amsmath}
+\\usepackage{pgfplots}
+\\pgfplotsset{compat=1.18}
 
-    markdown-table sources render inline (no fence); everything else gets
-    a language-tagged fence (mermaid, tikz).
+\\begin{document}
+%s
+\\end{document}"""
+
+
+def _wrap_tikz_document(source: str) -> str:
+    """Wrap tikz content in the document preamble + body.
+
+    (No \\documentclass — the consuming toolchain supplies the class.)
+
+    Idempotent: a source that is already a complete document (contains
+    \\begin{document}) passes through unchanged.
+    """
+    body = source.strip()
+    if "\\begin{document}" in body:
+        return body
+    return _TIKZ_DOC_TEMPLATE % body
+
+
+def _visual_block(kind: str, description: str, source: str,
+                  source_lang: str, generated_image: str = "") -> str:
+    """One diagram/sketch entry: description bullet + optional source code
+    or generated image.
+
+    markdown-table sources render inline (no fence); tikz sources are
+    wrapped in a compilable standalone document; everything else gets a
+    language-tagged fence (mermaid).
     """
     parts: list[str] = []
     if description.strip():
@@ -206,5 +302,9 @@ def _visual_block(kind: str, description: str, source: str,
         if source_lang == "markdown":
             parts.append(source.strip())
         else:
-            parts.append(f"```{source_lang}\n{source.strip()}\n```")
+            fenced = (_wrap_tikz_document(source) if source_lang == "tikz"
+                      else source.strip())
+            parts.append(f"```{source_lang}\n{fenced}\n```")
+    if generated_image.strip():
+        parts.append(f"![{description.strip()}]({generated_image.strip()})")
     return "\n\n".join(parts)

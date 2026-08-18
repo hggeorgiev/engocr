@@ -22,7 +22,9 @@ VISION_RETRY_BASE_SECONDS = 10           # backoff base (10s → 30s → 90s + j
 # ── Gemini vision ─────────────────────────────────────
 GEMINI_VISION_MODEL = "gemini-3.6-flash"  # default when VISION_MODEL is unset
 GEMINI_VISION_TEMPERATURE = 0.0          # deterministic structured output
-GEMINI_VISION_MAX_OUTPUT_TOKENS = 4096
+# Dense handwritten pages + diagram sources need headroom; hitting this
+# cap truncates the JSON (the salvage parser in extractor.py mitigates).
+GEMINI_VISION_MAX_OUTPUT_TOKENS = 16384
 
 # ── Provider selection (read here for convenience; providers also
 #    read the environment directly) ────────────────────

@@ -17,6 +17,14 @@ diffable text that renders natively in GitHub/Obsidian/VS Code (Mermaid) or
 compiles with LaTeX (TikZ). Only structure the model can ground in the image
 is emitted; anything unclear stays a plain description.
 
+**Sketch → generated image** (`--gen-diagrams`, opt-in). Sketches that resist
+code reconstruction (venn diagrams, freehand drawings, unclear structure) are
+*redrawn as clean digital diagrams* by an image-generation model (Gemini or
+OpenAI `gpt-image-1` — `image_gen_provider` / `image_gen_model` in config).
+The model sees the cropped sketch region plus an instruction, so the redraw
+stays faithful to your original. PNGs are written next to the markdown and
+embedded as `![description](file.png)`. One image call per such sketch.
+
 > **Status: 0.1.0 (pre-release)** — expect breaking changes until 1.0.
 
 ## Install
@@ -36,8 +44,10 @@ Requires Python ≥3.12 (uv fetches one if needed).
 engocr convert notes.jpg              # → notes.md (next to the input)
 engocr convert *.jpg -o converted/    # one .md per image, into a directory
 engocr convert scan.pdf               # every page rendered + transcribed
+                                      #   (tqdm progress bar on stderr)
 engocr convert notes.jpg --stdout     # print markdown instead of writing
 engocr convert notes.jpg --json       # raw structured result (JSON)
+engocr convert notes.jpg --gen-diagrams  # also redraw freehand sketches as PNGs
 engocr convert notes.jpg --provider anthropic --model claude-sonnet-4-5
 ```
 

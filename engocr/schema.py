@@ -28,6 +28,7 @@ class DiagramElement:
     structured_data: dict = field(default_factory=dict)
     source: str = ""                          # reconstructed diagram code ("" = not grounded)
     source_lang: str = ""                     # "mermaid" | "markdown" | "tikz"
+    generated_image: str = ""                 # PNG filename from --gen-diagrams (if any)
     bbox_approx: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])
 
 
@@ -37,6 +38,7 @@ class SketchElement:
     description: str = ""
     source: str = ""                          # reconstructed diagram code ("" = not grounded)
     source_lang: str = ""                     # "tikz" for coordinate/geometry sketches
+    generated_image: str = ""                 # PNG filename from --gen-diagrams (if any)
     bbox_approx: list[float] = field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])
 
 

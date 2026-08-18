@@ -118,9 +118,9 @@ def test_convert_missing_or_bad_file(tmp_path):
 
 
 def test_convert_pdf_renders_every_page(tmp_path):
-    import fitz
+    import pymupdf
     pdf = tmp_path / "scan.pdf"
-    doc = fitz.open()
+    doc = pymupdf.open()
     for _ in range(3):
         doc.new_page(width=200, height=200)
     doc.save(pdf)
@@ -138,9 +138,9 @@ def test_convert_pdf_renders_every_page(tmp_path):
 
 
 def test_convert_pdf_page_failure_isolated(tmp_path):
-    import fitz
+    import pymupdf
     pdf = tmp_path / "scan.pdf"
-    doc = fitz.open()
+    doc = pymupdf.open()
     for _ in range(2):
         doc.new_page(width=200, height=200)
     doc.save(pdf)
