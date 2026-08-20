@@ -155,9 +155,9 @@ Rules for source reconstruction (diagram_elements and sketch_elements):
 
 Rules for equations:
 - Transcribe ALL visible mathematical expressions into proper LaTeX format.
-- Use \\(...\\) for inline math and \\[...\\] for display/block math (do NOT use $$).
+- Use $...$ for inline math and \\[...\\] for display/block math (do NOT use $$).
 - Inside text_elements and descriptions, wrap EVERY mathematical expression,
-  symbol, or variable in \\(...\\) — never leave bare LaTeX commands
+  symbol, or variable in $...$ — never leave bare LaTeX commands
   (\\int, \\frac, \\sum, ^, _, \\alpha, ...) unwrapped in prose.
 - For matrices, use \\begin{{pmatrix}} or \\begin{{bmatrix}} environments.
 - For aligned equations, use \\begin{{aligned}} within \\[...\\].
