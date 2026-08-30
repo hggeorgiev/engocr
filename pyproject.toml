@@ -9,6 +9,7 @@ description = "EngOCR — local-first OCR for technical handwritten notes: image
 requires-python = ">=3.12"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "Hristo Georgiev", email = "contact@hristo-georgiev.com"},
 ]
@@ -18,7 +19,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
 
 dependencies = [
@@ -40,7 +43,10 @@ dev = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/hggeorgiev/engocr"
 Repository = "https://github.com/hggeorgiev/engocr"
+Documentation = "https://github.com/hggeorgiev/engocr/blob/main/README.md"
+Changelog = "https://github.com/hggeorgiev/engocr/blob/main/CHANGELOG.md"
 Issues = "https://github.com/hggeorgiev/engocr/issues"
 
 [project.scripts]
@@ -49,6 +55,9 @@ engocr = "engocr.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["engocr*"]
+
+[tool.setuptools.package-data]
+engocr = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

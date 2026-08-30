@@ -31,7 +31,7 @@ embedded as `![description](file.png)`. One image call per such sketch.
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install git+https://github.com/hggeorgiev/engocr
+uv tool install engocr
 
 engocr config            # writes ~/.config/engocr/config.json — edit it
 ```
@@ -50,6 +50,22 @@ engocr convert notes.jpg --json       # raw structured result (JSON)
 engocr convert notes.jpg --gen-diagrams  # also redraw freehand sketches as PNGs
 engocr convert notes.jpg --provider anthropic --model claude-sonnet-4-5
 ```
+
+## Examples
+
+Handwritten page → EngOCR markdown output.
+
+**Example 1**
+
+| Before | After |
+|---|---|
+| ![Before](https://raw.githubusercontent.com/hggeorgiev/engocr/main/examples/engocr-example-1-before.png) | ![After](https://raw.githubusercontent.com/hggeorgiev/engocr/main/examples/engocr-example-1-after.png) |
+
+**Example 2**
+
+| Before | After |
+|---|---|
+| ![Before](https://raw.githubusercontent.com/hggeorgiev/engocr/main/examples/engocr-2-before-example.png) | ![After](https://raw.githubusercontent.com/hggeorgiev/engocr/main/examples/engocr-example-2-after.png) |
 
 ## Providers
 
@@ -92,13 +108,6 @@ caption = caption_image(pil_image)            # one-line description, any provid
 reconstructed `source` / `source_lang`: mermaid, tikz, or markdown),
 `captions_and_annotations`. (`tags_suggestion` / `half_life_suggestion` are
 optional consumer extensions used by EngMem; ignore them standalone.)
-
-## EngMem
-
-[EngMem](https://github.com/hggeorgiev/engmem) (Engineering Memory) uses
-engocr as its vision-extraction backend for ingestion of PDFs, handwritten
-notes, and sketches. If you only need to convert notes to text, engocr alone
-is enough.
 
 ## Development
 
